@@ -1,0 +1,2 @@
+Follow these instructions to generate the commit message:
+1. The commit message should be maximum 1-line
