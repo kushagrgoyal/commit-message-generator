@@ -1,8 +1,26 @@
+import argparse
 import os
 import subprocess
 import pyperclip
 
 from ollama import Client
+
+
+def arg_parser():
+    parser = argparse.ArgumentParser(description="Generate Git commit messages using LLM.")
+    parser.add_argument(
+        "--style",
+        default="prompts/style_guide.txt",
+        help="Path to the style guide file",
+    )
+    parser.add_argument("--repo", default=".", help="Path to the git repository")
+    parser.add_argument("--sprompt", default="prompts/system_prompt.txt", help="Path to system prompt file")
+    parser.add_argument(
+        "--instruct",
+        default="",
+        help="Any additional custom instructions for the model",
+    )
+    return parser.parse_args()
 
 
 def get_git_changes(repo_path):
@@ -32,18 +50,32 @@ def get_git_changes(repo_path):
         os.chdir(original_dir)
 
 
-def generate_commit_message_ollama(
-    *, ollama_client: Client, model: str, changes, style_guide, system_prompt: str
-) -> str:
+def read_file(file_path):
+    """Read the style guide from a file."""
+    try:
+        with open(file_path, "r") as file:
+            return file.read()
+    except FileNotFoundError:
+        print(f"File not found: {file_path}")
+        return None
+
+
+def create_system_prompt(*, system_prompt: str, style_guide: str, user_instructions: str) -> str:
+    system_prompt = f"{system_prompt}\n---\nStyle Guide:\n{style_guide}\n---\nUser Instructions:\n{user_instructions}"
+    return system_prompt
+
+
+def generate_commit_message_ollama(*, ollama_client: Client, model: str, changes, system_prompt: str) -> str:
     """Generate a commit message using Ollama."""
     prompt = f"""
-    Based on the following git changes and style guide, generate a 1-line commit message that accurately describes the changes:
+    Based on the following git changes, generate a 1-line commit message that accurately describes the changes:
 
     Git Changes:
     {changes}
-
-    Style Guide:
-    {style_guide}
+    
+    ---
+    
+    The ONLY output MUST be a commit message.
     """
     response = ollama_client.generate(prompt=prompt, model=model, system=system_prompt)
     return response["response"].strip()
@@ -56,6 +88,10 @@ def generate_short_description_ollama(
     prompt = f"""
     Based on the following commit message, generate a short, concise description:
     {commit_message}
+    
+    ---
+
+    The ONLY output MUST be a short, concise description.
     """
     response = ollama_client.generate(prompt=prompt, model=model, system=system_prompt)
     return response["response"].strip()
@@ -74,24 +110,14 @@ def update_commit_message_ollama(*, ollama_client: Client, model: str, current_m
         User's modifications:
         {user_input}
 
-        Generate a new commit message that:
-        - follows updated user's modification instructions
-        - accurately describes the changes
+        ---
+    
+        The ONLY output MUST be the updated commit message.
         """
         response = ollama_client.generate(prompt=prompt, model=model, system=system_prompt)
         return response["response"].strip()
     else:
         return current_message
-
-
-def read_style_guide(file_path):
-    """Read the style guide from a file."""
-    try:
-        with open(file_path, "r") as file:
-            return file.read()
-    except FileNotFoundError:
-        print(f"Style guide file not found: {file_path}")
-        return None
 
 
 def update_commit_message(current_message):
